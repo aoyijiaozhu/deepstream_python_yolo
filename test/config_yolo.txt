@@ -1,0 +1,57 @@
+[property]
+gpu-id=0
+# 1. 预处理 / Pre-processing
+# YOLO 必须的归一化系数 (1/255)
+net-scale-factor=0.0039215697906911373
+# 模型颜色格式 (0=RGB, 1=BGR, 2=GRAY)。YOLO通常训练时用RGB。
+model-color-format=0
+# 【关键】保持长宽比，不要暴力拉伸图片，否则坐标会偏
+maintain-aspect-ratio=1
+# 【关键】对称填充（DeepStream-Yolo 库要求的预处理方式）
+symmetric-padding=1
+
+# 2. 模型文件 / Model Files
+onnx-file=yolov5s.onnx
+model-engine-file=yolov5s.onnx_b1_gpu0_fp16.engine
+# 标签文件，确保里面有80行（如果是COCO模型）
+labelfile-path=labels.txt
+
+# 3. 网络配置 / Network Config
+# 输入维度 (Channel;Height;Width)，YOLOv5s 默认是 640
+infer-dims=3;640;640
+# 批次大小 (建议等于你的 RTSP 流数量，例如你测 2 路流就设为 2)
+batch-size=2
+# 0=Detector (检测), 1=Classifier (分类), 2=Segmentation (分割)
+network-type=0
+# 0=FP32, 1=INT8, 2=FP16 (推荐 FP16，速度快且精度损失小)
+network-mode=2
+# 类别数 (COCO默认80，如果自训练模型请修改)
+num-detected-classes=80
+# GIE ID，必须唯一
+gie-unique-id=1
+# 1=Primary (主推理引擎)
+process-mode=1
+interval=0
+
+# === 4. 自定义解析库 (核心部分) ===
+# 指向你编译好的 .so 文件
+custom-lib-path=/opt/nvidia/deepstream/deepstream-8.0/sources/myproject/yolov5s_rtsp_test/nvdsinfer_custom_impl_Yolo/libnvdsinfer_custom_impl_Yolo.so
+# 指定 C++ 解析函数名
+parse-bbox-func-name=NvDsInferParseYolo
+
+# 5. 后处理与聚类 / Clustering (NMS)
+# 2=NMS (非极大值抑制)
+cluster-mode=2
+
+[class-attrs-all]
+# NMS 阈值，重叠度超过 0.45 就过滤掉 (YOLO 标准通常是 0.45 或 0.5)
+nms-iou-threshold=0.45
+# 置信度阈值，低于 0.25 的框直接丢弃
+pre-cluster-threshold=0.25
+# 最多保留多少个框
+topk=300
+
+## 如果你需要针对特定类别调整阈值，可以取消注释下方代码
+## 例如：让 ID=0 (人) 的检测更严格
+#[class-attrs-0]
+#pre-cluster-threshold=0.5
