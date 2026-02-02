@@ -1,0 +1,54 @@
+#确保docker开启Use the WSL 2 based engine
+-------------------------------------------------------------
+#拉取容器
+#DeepStream 8.0 全功能版（包含 Triton 和所有开发工具）
+docker pull nvcr.io/nvidia/deepstream:7.0-gc-triton-devel
+
+#进入容器，注意修改挂载的目录
+docker run -it --rm --gpus all \
+  --net=host \
+  --privileged \
+  --shm-size=4g \
+  -e DISPLAY=$DISPLAY \
+  -v /tmp/.X11-unix:/tmp/.X11-unix \
+  -v /mnt/d/Project/deepstream:/opt/nvidia/deepstream/deepstream/sources/myproject \
+-------------------------------------------------------------
+#安装依赖。注意：8.0的deepstream在x86平台必须安装12.8.0的cuda-python
+pip3 install cuda-python==12.8.0
+
+#安装 PyDS。deepstream-8.0对应1.2.2的PyDS
+#确保你在 /opt/nvidia/deepstream/deepstream-8.0 目录下
+./user_deepstream_python_apps_install.sh --version 1.2.2
+
+# 验证(我这一步报错了，不知道为什么)
+python3 -c "import pyds; print('OK')"
+
+#若安装失败，手动下载安装，再次验证应该就行了
+wget https://github.com/NVIDIA-AI-IOT/deepstream_python_apps/releases/download/v1.2.2/pyds-1.2.2-cp312-cp312-linux_x86_64.whl
+pip3 install ./pyds-1.2.2-cp312-cp312-linux_x86_64.whl --force-reinstall
+-------------------------------------------------------------
+#挂载yolo动态链接库
+#确保此时处在代码文件夹nvdsinfer_custom_impl_Yolo的同级目录
+CUDA_VER=12.8 make -C nvdsinfer_custom_impl_Yolo
+# 编译成功后，会得到一个 libnvdsinfer_custom_impl_Yolo.so 文件
+
+#用https://github.com/marcoslucianops/DeepStream-Yolo生成符合deepstream架构的特定onnx文件和lables.txt，这里已经生成好了，不需要改。
+
+#检查config_yolo.txt ，确保custom-lib-path正确指向libnvdsinfer_custom_impl_Yolo.so路径；model-engine-file会在初次运行时生成。
+-------------------------------------------------------------
+#启动Docker 版 ZLMediaKit（和 DeepStream 共享 host 网络）
+#我测试的时候端口可能有问题，改了映射如下
+docker run -d --rm \
+  -p 8554:554 \
+  -p 10000:10000/udp \
+  -p 8080:80 \
+  --name zlm \
+  zlmediakit/zlmediakit:master
+
+#推流。视频文件随便找一个。
+ffmpeg -re -stream_loop -1 -i sample_720p.mp4 -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:8554/live/test
+-------------------------------------------------------------
+#运行，模拟两路信号
+python3 deepstream_test_3.py -i rtsp://127.0.0.1:8554/live/test rtsp://127.0.0.1:8554/live/test --pgie nvinfer -c config_yolo.txt
+
+
